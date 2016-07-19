@@ -1,11 +1,11 @@
-VERSION >= v"0.4.0-dev+6641" && __precompile__()
+VERSION >= v"0.4.0-dev" && __precompile__()
 
 module Codecs
 
 using Compat
 
 
-export encode, decode, Base64, Zlib, BCD
+export encode, decode, Base64, Zlib, BCD, Base58
 
 abstract Codec
 
@@ -359,6 +359,49 @@ function decode(::Type{BCD}, v::Vector{UInt8}, bigendian::Bool = false)
         end
     end
     return ret
+end
+
+
+# Trivial Base58 encode/decode
+abstract Base58 <: Codec
+
+stdalphs = @compat Dict("bitcoin" => "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz",
+                        "flickr"  => "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ",
+                        "ripple"  => "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz")
+
+function encode(::Type{Base58}, n::Integer, alph::AbstractString = stdalphs["bitcoin"])
+    b58alph = [alph[i] for i in 1:length(alph)]
+    if n <= 0
+        error("Integer must be greater than 0.")
+    elseif length(string(n)) > 57
+        error("Integer length must be shorter or same as 58.")
+    end
+    ret = ""
+    while n > 0
+        r = n % 58
+        n = div(n, 58)
+        ret *= string(b58alph[r])
+    end
+    return reverse(ret)
+end
+
+function decode(::Type{Base58}, s::AbstractString, alph::AbstractString = stdalphs["bitcoin"])
+    b58alph = [alph[i] for i in 1:length(alph)]
+    if length(s) == 0
+        error("You can't decode an encoded value of size 0!")
+    elseif length(s) > 57
+        error("You can't b58 decode a non-b58 encoded value!")
+    end
+    n = 0
+    try
+        for idx in 1:length(s)
+            n *= 58
+            n += find(b58alph .== s[idx])[1]
+        end
+    catch
+        error("Invalid encoded value provided.")
+    end
+    return n
 end
 
 
