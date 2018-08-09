@@ -1,5 +1,5 @@
 using Codecs
-using Base.Test
 using Compat
+using Test
 
 include("tests.jl")

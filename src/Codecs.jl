@@ -4,18 +4,23 @@ module Codecs
 
 using Compat
 
+# Not yet handled by Compat 1.0.1
+@static if VERSION < v"0.7.0-alpha"
+    Base.digits(n; base=10, pad=1) = digits(n, base, pad)
+end
+
 
 export encode, decode, Base64, Zlib, BCD
 
 @compat abstract type Codec end
 
 
-function encode{T <: Codec}(codec::Type{T}, s::AbstractString)
+function encode(codec::Type{T}, s::AbstractString) where {T <: Codec}
     encode(codec, Vector{UInt8}(s))
 end
 
 
-function decode{T <: Codec}(codec::Type{T}, s::AbstractString)
+function decode(codec::Type{T}, s::AbstractString) where {T <: Codec}
     decode(codec, Vector{UInt8}(s))
 end
 
@@ -59,14 +64,14 @@ function base64dec(c::UInt8)
     v
 end
 
-function encode(::Type{Base64}, input::Vector{UInt8})
+function encode(::Type{Base64}, input::AbstractVector{UInt8})
     n = length(input)
     if n == 0
-        return Vector{UInt8}(0)
+        return zeros(UInt8, 0)
     end
 
     m = Int(4 * ceil(n / 3))
-    output = Vector{UInt8}(m)
+    output = zeros(UInt8, m)
 
     k = 1
     for ii = 1:3:length(input)-2
@@ -95,10 +100,10 @@ function encode(::Type{Base64}, input::Vector{UInt8})
 end
 
 
-function decode(::Type{Base64}, input::Vector{UInt8})
+function decode(::Type{Base64}, input::AbstractVector{UInt8})
     n = length(input)
     if n == 0
-        return Vector{UInt8}(0)
+        return zeros(UInt8, 0)
     end
 
     if n % 4 != 0
@@ -112,7 +117,7 @@ function decode(::Type{Base64}, input::Vector{UInt8})
     if input[end - 1] == base64_pad
         m -= 1
     end
-    output = Vector{UInt8}(m)
+    output = zeros(UInt8, m)
 
     k = 1
     @inbounds for ii = 1:4:length(input)-4
@@ -193,7 +198,7 @@ elseif Compat.Sys.iswindows()
 end
 
 # The zlib z_stream structure.
-type z_stream
+mutable struct z_stream
     next_in::Ptr{UInt8}
     avail_in::Cuint
     total_in::Culong
@@ -203,11 +208,11 @@ type z_stream
     total_out::Culong
 
     msg::Ptr{UInt8}
-    state::Ptr{Void}
+    state::Ptr{Cvoid}
 
-    zalloc::Ptr{Void}
-    zfree::Ptr{Void}
-    opaque::Ptr{Void}
+    zalloc::Ptr{Cvoid}
+    zfree::Ptr{Cvoid}
+    opaque::Ptr{Cvoid}
 
     data_type::Cint
     adler::Culong
@@ -239,7 +244,7 @@ function zlib_version()
 end
 
 
-function encode(::Type{Zlib}, input::Vector{UInt8}, level::Integer)
+function encode(::Type{Zlib}, input::AbstractVector{UInt8}, level::Integer)
     if !(1 <= level <= 9)
         error("Invalid zlib compression level.")
     end
@@ -256,8 +261,8 @@ function encode(::Type{Zlib}, input::Vector{UInt8}, level::Integer)
     strm.next_in = pointer(input)
     strm.avail_in = length(input)
     strm.total_in = length(input)
-    output = Vector{UInt8}(0)
-    outbuf = Vector{UInt8}(1024)
+    output = zeros(UInt8, 0)
+    outbuf = zeros(UInt8, 1024)
 
     @gc_preserve input outbuf while ret != Z_STREAM_END
         strm.avail_out = length(outbuf)
@@ -289,10 +294,10 @@ function encode(::Type{Zlib}, input::AbstractString, level::Integer)
 end
 
 
-encode(::Type{Zlib}, input::Vector{UInt8}) = encode(Zlib, input, 9)
+encode(::Type{Zlib}, input::AbstractVector{UInt8}) = encode(Zlib, input, 9)
 
 
-function decode(::Type{Zlib}, input::Vector{UInt8})
+function decode(::Type{Zlib}, input::AbstractVector{UInt8})
     strm = z_stream()
     ret = ccall((:inflateInit_, libz),
                 Int32, (Ref{z_stream}, Ptr{UInt8}, Int32),
@@ -305,8 +310,8 @@ function decode(::Type{Zlib}, input::Vector{UInt8})
     strm.next_in = pointer(input)
     strm.avail_in = length(input)
     strm.total_in = length(input)
-    output = Vector{UInt8}(0)
-    outbuf = Vector{UInt8}(1024)
+    output = zeros(UInt8, 0)
+    outbuf = zeros(UInt8, 1024)
 
     @gc_preserve input outbuf while ret != Z_STREAM_END
         strm.next_out = pointer(outbuf)
@@ -345,9 +350,9 @@ function encode(::Type{BCD}, i::Integer, bigendian::Bool = false)
     end
     ndig = ndigits(i)
     ndig += isodd(ndig)
-    v = digits(i, 10, ndig)
+    v = digits(i, base=10, pad=ndig)
     nbytes = trunc(Integer, ndig/2)
-    out = Vector{UInt8}(nbytes)
+    out = zeros(UInt8,nbytes)
     dj = 1-2*bigendian
     for i = 1:nbytes
         j = bigendian*length(v) + dj*2*(i-1) + 1-bigendian
@@ -356,7 +361,7 @@ function encode(::Type{BCD}, i::Integer, bigendian::Bool = false)
     return out
 end
 
-function decode(::Type{BCD}, v::Vector{UInt8}, bigendian::Bool = false)
+function decode(::Type{BCD}, v::AbstractVector{UInt8}, bigendian::Bool = false)
     ret = 0
     if bigendian
         for i = 1:length(v)
